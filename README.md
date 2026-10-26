@@ -48,3 +48,19 @@ Point it at your extracted Takeout folder; it recurses into subfolders. By defau
 Skipped files (no usable JSON sidecar) and failed files (exiftool error) are copied — together with their sidecar, when one exists — into sibling `<folder>-skipped` and `<folder>-failed` directories so you can review or retry them. These folders are only created when there is something to put in them, and failed files are removed from the `-merged` tree so it only ever contains successes.
 
 After running, the photo and video files (not the JSONs) are ready to be stored or uploaded wherever you like.
+
+## Fixing "Not a valid HEIC/PNG" failures
+
+Some Takeout files carry the wrong extension — the bytes are actually JPEG but the file is named `.HEIC` or `.PNG` — which makes exiftool fail with errors like `Not a valid HEIC`, so those files land in the `-failed` folder.
+
+`fix_jpeg_extension.py` repairs these: it sniffs each file's magic bytes and, when the content is JPEG but the extension says otherwise, renames the file to `.JPG` in place, along with its `.supplemental-metadata.json` sidecar so the pairing still works. Genuinely non-JPEG files are left untouched.
+
+```bash
+# Preview what would be renamed
+python3 fix_jpeg_extension.py /path/to/Takeout-failed --dry-run
+
+# Rename for real
+python3 fix_jpeg_extension.py /path/to/Takeout-failed
+```
+
+Then re-run `merge_metadata.py` on the fixed folder.

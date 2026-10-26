@@ -38,8 +38,13 @@ python3 merge_metadata.py /path/to/Takeout --output /path/to/fixed
 
 # Edit the original files in place instead of writing copies
 python3 merge_metadata.py /path/to/Takeout --in-place
+
+# Also print a log line for every successfully updated file
+python3 merge_metadata.py /path/to/Takeout --info
 ```
 
-Point it at your extracted Takeout folder; it recurses into subfolders and prints one line per file plus a summary. By default the fixed files go to a sibling `<folder>-merged` directory, mirroring the source structure (JSON sidecars are not copied). Note the copies roughly double the disk usage; use `--in-place` if space is tight and you still have the Takeout zip as backup.
+Point it at your extracted Takeout folder; it recurses into subfolders. By default it prints a line for each skipped or failed file plus a final summary; pass `--info` to also log every successfully updated file. The fixed files go to a sibling `<folder>-merged` directory, mirroring the source structure (JSON sidecars are not copied). Note the copies roughly double the disk usage; use `--in-place` if space is tight and you still have the Takeout zip as backup.
+
+Skipped files (no usable JSON sidecar) and failed files (exiftool error) are copied — together with their sidecar, when one exists — into sibling `<folder>-skipped` and `<folder>-failed` directories so you can review or retry them. These folders are only created when there is something to put in them, and failed files are removed from the `-merged` tree so it only ever contains successes.
 
 After running, upload the photo and video files (not the JSONs) to OneDrive.

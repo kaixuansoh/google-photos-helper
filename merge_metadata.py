@@ -12,10 +12,15 @@ By default the originals are left untouched: fixed copies are written to a
 sibling folder named "<folder>-merged" (or the folder given via --output),
 mirroring the source structure. Use --in-place to edit the originals instead.
 
+Skipped and failed files are copied (together with their metadata JSON,
+when one exists) into sibling folders named "<folder>-skipped" and
+"<folder>-failed" so they can be reviewed or retried separately.
+
 Usage:
     python3 merge_metadata.py <takeout-folder> [more folders...] [--dry-run]
     python3 merge_metadata.py <takeout-folder> --output <folder>
     python3 merge_metadata.py <takeout-folder> --in-place
+    python3 merge_metadata.py <takeout-folder> --info   # per-file log lines
 
 Requires exiftool (brew install exiftool).
 """
@@ -137,6 +142,16 @@ def exiftool_args(media: Path, ts: int, geo: dict) -> list[str]:
     return args
 
 
+def copy_aside(media: Path, sidecar: Path | None, root: Path, suffix: str) -> None:
+    """Copy a media file (and its JSON sidecar, if any) into '<root>-<suffix>'."""
+    out_root = root.parent / (root.name + "-" + suffix)
+    target = out_root / media.relative_to(root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(media, target)
+    if sidecar is not None:
+        shutil.copy2(sidecar, target.parent / sidecar.name)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("folders", nargs="+", type=Path, help="Takeout folder(s) to process (recursive)")
@@ -148,6 +163,10 @@ def main() -> int:
     parser.add_argument(
         "--in-place", action="store_true",
         help="Edit the original files instead of writing copies",
+    )
+    parser.add_argument(
+        "--info", action="store_true",
+        help="Print a log line per file (default: only the final summary)",
     )
     opts = parser.parse_args()
     if opts.output and opts.in_place:
@@ -168,10 +187,14 @@ def main() -> int:
                     jsons_by_dir.setdefault(path.parent, {})[path.name.lower()] = path
 
     done = skipped = failed = 0
+    # SKIP/FAIL always print; OK/DRY lines only with --info
+    log = print if opts.info else (lambda *a, **k: None)
     for media, root in media_files:
         sidecar = find_json_for(media, jsons_by_dir.get(media.parent, {}))
         if sidecar is None:
             print(f"SKIP  {media.name}: no metadata JSON found")
+            if not opts.dry_run:
+                copy_aside(media, None, root, "skipped")
             skipped += 1
             continue
         try:
@@ -179,6 +202,8 @@ def main() -> int:
             ts = int(meta["photoTakenTime"]["timestamp"])
         except (OSError, ValueError, KeyError) as e:
             print(f"SKIP  {media.name}: cannot read photoTakenTime from {sidecar.name} ({e})")
+            if not opts.dry_run:
+                copy_aside(media, sidecar, root, "skipped")
             skipped += 1
             continue
 
@@ -191,7 +216,7 @@ def main() -> int:
             target = out_root / media.relative_to(root)
         if opts.dry_run:
             where = "" if opts.in_place else f" -> {target}"
-            print(f"DRY   {media.name}: would set taken time -> {taken}{where}")
+            log(f"DRY   {media.name}: would set taken time -> {taken}{where}")
             done += 1
             continue
 
@@ -205,11 +230,15 @@ def main() -> int:
         )
         if result.returncode != 0:
             print(f"FAIL  {media.name}: {result.stderr.strip()}")
+            copy_aside(media, sidecar, root, "failed")
+            # drop the half-processed copy so the merged tree only holds successes
+            if not opts.in_place:
+                target.unlink(missing_ok=True)
             failed += 1
             continue
         # exiftool resets mtime of files it rewrites; re-apply via os.utime
         os.utime(target, (ts, ts))
-        print(f"OK    {media.name}: taken time -> {taken}")
+        log(f"OK    {media.name}: taken time -> {taken}")
         done += 1
 
     print(f"\n{done} updated, {skipped} skipped, {failed} failed")

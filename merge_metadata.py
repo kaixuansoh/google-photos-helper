@@ -98,6 +98,8 @@ def exiftool_args(media: Path, ts: int, geo: dict) -> list[str]:
             f"-EXIF:OffsetTimeOriginal={offset}",
             f"-EXIF:OffsetTimeDigitized={offset}",
             f"-EXIF:OffsetTime={offset}",
+            # OffsetTime* tags require EXIF 2.31; older files often carry 0220/0221
+            "-EXIF:ExifVersion=0232",
         ]
         if ext == ".png":
             args.append(f"-PNG:CreationTime={stamp}{offset}")

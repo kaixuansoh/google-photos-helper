@@ -64,3 +64,25 @@ python3 fix_jpeg_extension.py /path/to/Takeout-failed
 ```
 
 Then re-run `merge_metadata.py` on the fixed folder.
+
+## Syncing file dates to the embedded date taken
+
+If your files already carry the correct capture date in their embedded metadata (e.g. after running `merge_metadata.py`, or straight off a camera) but the filesystem creation/modified dates show the copy date, `sync_file_dates.py` fixes just the filesystem side:
+
+- Reads the capture time from each file's own metadata — EXIF `DateTimeOriginal` / `CreateDate` for images, QuickTime `CreateDate` / `MediaCreateDate` for videos (interpreted as UTC, per spec)
+- Sets the file's **creation** and **modified** dates to that timestamp
+- Never rewrites the media bytes — only filesystem timestamps change
+- Files with no embedded capture date are skipped and reported
+
+```bash
+# Preview what would change (modifies nothing)
+python3 sync_file_dates.py /path/to/photos --dry-run
+
+# Sync for real
+python3 sync_file_dates.py /path/to/photos
+
+# Also print a log line for every updated file
+python3 sync_file_dates.py /path/to/photos --info
+```
+
+It recurses into subfolders and accepts multiple folders. Setting the creation date on macOS needs `setfile` from the Xcode command-line tools (exiftool uses it under the hood).

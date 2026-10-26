@@ -8,8 +8,14 @@ modification time to match. OneDrive reads "date taken" from embedded
 metadata, falling back to file modified time, so after running this the
 files can be uploaded to OneDrive and keep their original timestamps.
 
+By default the originals are left untouched: fixed copies are written to a
+sibling folder named "<folder>-merged" (or the folder given via --output),
+mirroring the source structure. Use --in-place to edit the originals instead.
+
 Usage:
     python3 merge_metadata.py <takeout-folder> [more folders...] [--dry-run]
+    python3 merge_metadata.py <takeout-folder> --output <folder>
+    python3 merge_metadata.py <takeout-folder> --in-place
 
 Requires exiftool (brew install exiftool).
 """
@@ -17,6 +23,7 @@ Requires exiftool (brew install exiftool).
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -132,9 +139,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("folders", nargs="+", type=Path, help="Takeout folder(s) to process (recursive)")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without modifying files")
+    parser.add_argument(
+        "-o", "--output", type=Path, default=None,
+        help="Folder to write fixed copies into (default: '<folder>-merged' next to each input folder)",
+    )
+    parser.add_argument(
+        "--in-place", action="store_true",
+        help="Edit the original files instead of writing copies",
+    )
     opts = parser.parse_args()
+    if opts.output and opts.in_place:
+        parser.error("--output and --in-place are mutually exclusive")
+    if opts.output and opts.output.exists() and not opts.output.is_dir():
+        parser.error(f"--output is not a directory: {opts.output}")
 
-    media_files: list[Path] = []
+    media_files: list[tuple[Path, Path]] = []  # (file, its input root folder)
     jsons_by_dir: dict[Path, dict[str, Path]] = {}
     for folder in opts.folders:
         if not folder.is_dir():
@@ -142,12 +161,12 @@ def main() -> int:
         for path in sorted(folder.rglob("*")):
             if path.is_file():
                 if path.suffix.lower() in MEDIA_EXTS:
-                    media_files.append(path)
+                    media_files.append((path, folder))
                 elif path.suffix.lower() == ".json":
                     jsons_by_dir.setdefault(path.parent, {})[path.name.lower()] = path
 
     done = skipped = failed = 0
-    for media in media_files:
+    for media, root in media_files:
         sidecar = find_json_for(media, jsons_by_dir.get(media.parent, {}))
         if sidecar is None:
             print(f"SKIP  {media.name}: no metadata JSON found")
@@ -163,13 +182,23 @@ def main() -> int:
 
         args = exiftool_args(media, ts, meta.get("geoData", {}))
         taken = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        if opts.in_place:
+            target = media
+        else:
+            out_root = opts.output or root.parent / (root.name + "-merged")
+            target = out_root / media.relative_to(root)
         if opts.dry_run:
-            print(f"DRY   {media.name}: would set taken time -> {taken}")
+            where = "" if opts.in_place else f" -> {target}"
+            print(f"DRY   {media.name}: would set taken time -> {taken}{where}")
             done += 1
             continue
 
+        if not opts.in_place:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(media, target)
+
         result = subprocess.run(
-            ["exiftool", "-overwrite_original", "-m", "-q", *args, str(media)],
+            ["exiftool", "-overwrite_original", "-m", "-q", *args, str(target)],
             capture_output=True, text=True,
         )
         if result.returncode != 0:
@@ -177,7 +206,7 @@ def main() -> int:
             failed += 1
             continue
         # exiftool resets mtime of files it rewrites; re-apply via os.utime
-        os.utime(media, (ts, ts))
+        os.utime(target, (ts, ts))
         print(f"OK    {media.name}: taken time -> {taken}")
         done += 1
 

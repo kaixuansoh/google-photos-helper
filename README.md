@@ -30,10 +30,16 @@ It also handles Takeout's sidecar naming quirks: truncated JSON filenames, dupli
 # Preview what would change (modifies nothing)
 python3 merge_metadata.py /path/to/Takeout --dry-run
 
-# Write the metadata (edits files in place)
+# Write fixed copies to /path/to/Takeout-merged (originals untouched)
 python3 merge_metadata.py /path/to/Takeout
+
+# Same, but to a folder of your choosing
+python3 merge_metadata.py /path/to/Takeout --output /path/to/fixed
+
+# Edit the original files in place instead of writing copies
+python3 merge_metadata.py /path/to/Takeout --in-place
 ```
 
-Point it at your extracted Takeout folder; it recurses into subfolders and prints one line per file plus a summary. Files are modified in place, so keep the original Takeout zip as your backup.
+Point it at your extracted Takeout folder; it recurses into subfolders and prints one line per file plus a summary. By default the fixed files go to a sibling `<folder>-merged` directory, mirroring the source structure (JSON sidecars are not copied). Note the copies roughly double the disk usage; use `--in-place` if space is tight and you still have the Takeout zip as backup.
 
 After running, upload the photo and video files (not the JSONs) to OneDrive.

@@ -4,9 +4,8 @@
 Writes the original "photo taken time" (and GPS, if present) from each
 `*.supplemental-metadata.json` into the media file's embedded metadata
 (EXIF for images, QuickTime tags for videos), and sets the filesystem
-modification time to match. OneDrive reads "date taken" from embedded
-metadata, falling back to file modified time, so after running this the
-files can be uploaded to OneDrive and keep their original timestamps.
+modification time to match, so the files carry their original timestamps
+wherever they go next.
 
 By default the originals are left untouched: fixed copies are written to a
 sibling folder named "<folder>-merged" (or the folder given via --output),
@@ -135,7 +134,7 @@ def exiftool_args(media: Path, ts: int, geo: dict) -> list[str]:
         if ext in VIDEO_EXTS:
             args.append(f"-QuickTime:GPSCoordinates={lat}, {lon}")
 
-    # File modified time = taken time (OneDrive's fallback when no EXIF)
+    # File modified time = taken time (fallback for formats without a date tag)
     file_stamp = datetime.fromtimestamp(ts).astimezone().strftime("%Y:%m:%d %H:%M:%S%z")
     file_stamp = file_stamp[:-2] + ":" + file_stamp[-2:]
     args.append(f"-FileModifyDate={file_stamp}")

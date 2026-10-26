@@ -1,10 +1,10 @@
 # google-photos-helper
 
-Fixes photo and video timestamps when migrating from Google Photos to OneDrive.
+Merges the metadata JSON sidecars from a Google Photos Takeout export back into the image and video files themselves.
 
 ## The problem
 
-Google Takeout exports your photos with a JSON sidecar (`*.supplemental-metadata.json`) holding the original taken time, instead of embedding it in the file. Upload those files to OneDrive and the "date taken" shows up as the import date, so your whole library sorts wrong.
+Google Takeout exports your photos with a JSON sidecar (`*.supplemental-metadata.json`) holding the original taken time, instead of embedding it in the file. Move those files anywhere else and the "date taken" shows up as the copy or import date, so your whole library sorts wrong.
 
 ## The fix
 
@@ -15,7 +15,7 @@ Google Takeout exports your photos with a JSON sidecar (`*.supplemental-metadata
 - **GPS coordinates** from `geoData`, when present
 - **File modified time** set to the taken time, as a fallback for formats without a date tag (e.g. GIF)
 
-OneDrive reads "date taken" from the embedded metadata, so the files keep their original timestamps no matter when you upload them.
+With the metadata embedded in the files themselves, they keep their original timestamps no matter where you move or upload them.
 
 It also handles Takeout's sidecar naming quirks: truncated JSON filenames, duplicate counters (`IMG(1).JPG` → `IMG.JPG.supplemental-metadata(1).json`), and `-edited` variants that share the original's sidecar.
 
@@ -47,4 +47,4 @@ Point it at your extracted Takeout folder; it recurses into subfolders. By defau
 
 Skipped files (no usable JSON sidecar) and failed files (exiftool error) are copied — together with their sidecar, when one exists — into sibling `<folder>-skipped` and `<folder>-failed` directories so you can review or retry them. These folders are only created when there is something to put in them, and failed files are removed from the `-merged` tree so it only ever contains successes.
 
-After running, upload the photo and video files (not the JSONs) to OneDrive.
+After running, the photo and video files (not the JSONs) are ready to be stored or uploaded wherever you like.

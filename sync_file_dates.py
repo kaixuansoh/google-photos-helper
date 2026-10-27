@@ -8,9 +8,15 @@ The files themselves are not rewritten -- only filesystem timestamps change.
 
 Files without any embedded capture date are skipped and reported.
 
+With --targetDate, the embedded tags themselves are rewritten instead:
+every media file gets the given date written to its date-taken tags
+(DateTimeOriginal/CreateDate for images, CreateDate/MediaCreateDate for
+videos) and its filesystem dates set to match.
+
 Usage:
     python3 sync_file_dates.py <folder> [more folders...] [--dry-run]
     python3 sync_file_dates.py <folder> --info   # per-file log lines
+    python3 sync_file_dates.py <folder> --targetDate "2019-07-14 15:30:00"
 
 Requires exiftool (brew install exiftool). Setting the creation date on
 macOS additionally needs the Xcode command-line tools' `setfile`, which
@@ -71,6 +77,18 @@ def read_taken_times(folder: Path) -> dict[Path, int]:
     return times
 
 
+def parse_target_date(value: str) -> int:
+    """Parse --targetDate into epoch seconds (local timezone)."""
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return int(datetime.strptime(value, fmt).timestamp())
+        except ValueError:
+            continue
+    raise argparse.ArgumentTypeError(
+        f"invalid date {value!r}; expected 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS'"
+    )
+
+
 def file_date_stamp(ts: int) -> str:
     """Format epoch seconds the way exiftool expects for File* pseudo-tags."""
     stamp = datetime.fromtimestamp(ts).astimezone().strftime("%Y:%m:%d %H:%M:%S%z")
@@ -85,6 +103,11 @@ def main() -> int:
         "--info", action="store_true",
         help="Print a log line per file (default: only skips, failures, and the final summary)",
     )
+    parser.add_argument(
+        "--targetDate", dest="target_date", type=parse_target_date, metavar="DATE",
+        help="Write this date ('YYYY-MM-DD' or 'YYYY-MM-DD HH:MM:SS') into every file's "
+             "embedded date-taken tags and filesystem dates, instead of reading dates from the files",
+    )
     opts = parser.parse_args()
 
     media_files: list[Path] = []
@@ -92,7 +115,8 @@ def main() -> int:
     for folder in opts.folders:
         if not folder.is_dir():
             parser.error(f"not a directory: {folder}")
-        taken_times.update(read_taken_times(folder))
+        if opts.target_date is None:
+            taken_times.update(read_taken_times(folder))
         media_files += [
             p for p in sorted(folder.rglob("*"))
             if p.is_file() and p.suffix.lower() in MEDIA_EXTS
@@ -102,22 +126,35 @@ def main() -> int:
     # SKIP/FAIL always print; OK/DRY lines only with --info
     log = print if opts.info else (lambda *a, **k: None)
     for media in media_files:
-        ts = taken_times.get(media)
-        if ts is None:
-            print(f"SKIP  {media.name}: no embedded date taken found")
-            skipped += 1
-            continue
+        if opts.target_date is not None:
+            ts = opts.target_date
+        else:
+            ts = taken_times.get(media)
+            if ts is None:
+                print(f"SKIP  {media.name}: no embedded date taken found")
+                skipped += 1
+                continue
 
         taken = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        what = "tags + created/modified" if opts.target_date is not None else "created/modified"
         if opts.dry_run:
-            log(f"DRY   {media.name}: would set created/modified -> {taken}")
+            log(f"DRY   {media.name}: would set {what} -> {taken}")
             done += 1
             continue
 
         stamp = file_date_stamp(ts)
+        tag_args: list[str] = []
+        if opts.target_date is not None:
+            exif_stamp = datetime.fromtimestamp(ts).strftime("%Y:%m:%d %H:%M:%S")
+            if media.suffix.lower() in VIDEO_EXTS:
+                tag_args = [f"-CreateDate={exif_stamp}", f"-MediaCreateDate={exif_stamp}"]
+            else:
+                tag_args = [f"-DateTimeOriginal={exif_stamp}", f"-CreateDate={exif_stamp}"]
         result = subprocess.run(
             [
                 "exiftool", "-overwrite_original", "-m", "-q",
+                "-api", "QuickTimeUTC=1",   # write local time as UTC into QuickTime tags
+                *tag_args,
                 f"-FileCreateDate={stamp}",
                 f"-FileModifyDate={stamp}",
                 str(media),
@@ -130,7 +167,7 @@ def main() -> int:
             continue
         # belt and braces: make sure mtime is exactly the taken time
         os.utime(media, (ts, ts))
-        log(f"OK    {media.name}: created/modified -> {taken}")
+        log(f"OK    {media.name}: {what} -> {taken}")
         done += 1
 
     print(f"\n{done} updated, {skipped} skipped, {failed} failed")

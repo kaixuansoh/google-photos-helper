@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rename mislabelled JPEG files to .JPG in place.
 
-Some Takeout files carry the wrong extension (e.g. IMG_0001.HEIC whose
+Some exported files carry the wrong extension (e.g. IMG_0001.HEIC whose
 bytes are actually JPEG), which makes exiftool fail with errors like
 "Not a valid HEIC". This script sniffs each file's magic bytes and, when
 the content is JPEG but the extension says otherwise, renames the file

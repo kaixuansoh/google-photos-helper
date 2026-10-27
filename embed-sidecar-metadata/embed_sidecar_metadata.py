@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge Google Takeout supplemental-metadata JSON back into photo/video files.
+"""Merge metadata JSON sidecars back into photo/video files.
 
 Writes the original "photo taken time" (and GPS, if present) from each
 `*.supplemental-metadata.json` into the media file's embedded metadata
@@ -16,10 +16,10 @@ when one exists) into sibling folders named "<folder>-skipped" and
 "<folder>-failed" so they can be reviewed or retried separately.
 
 Usage:
-    python3 merge_metadata.py <takeout-folder> [more folders...] [--dry-run]
-    python3 merge_metadata.py <takeout-folder> --output <folder>
-    python3 merge_metadata.py <takeout-folder> --in-place
-    python3 merge_metadata.py <takeout-folder> --info   # per-file log lines
+    python3 embed_sidecar_metadata.py <folder> [more folders...] [--dry-run]
+    python3 embed_sidecar_metadata.py <folder> --output <folder>
+    python3 embed_sidecar_metadata.py <folder> --in-place
+    python3 embed_sidecar_metadata.py <folder> --info   # per-file log lines
 
 Requires exiftool (brew install exiftool).
 """
@@ -42,10 +42,10 @@ JSON_MARKERS = (".supplemental-metadata", ".supplemental-met", ".suppl", ".json"
 
 
 def find_json_for(media: Path, json_names: dict[str, Path]) -> Path | None:
-    """Locate the Takeout JSON sidecar for a media file.
+    """Locate the JSON sidecar for a media file.
 
-    Handles the common Takeout quirks: normal sidecars, truncated JSON
-    filenames (Takeout caps them at ~51 chars), duplicate-counter sidecars
+    Handles the common sidecar naming quirks: normal sidecars, truncated
+    JSON filenames (some exporters cap them at ~51 chars), duplicate-counter sidecars
     (IMG(1).JPG -> IMG.JPG.supplemental-metadata(1).json), and -edited
     variants which share the original's sidecar.
     """
@@ -153,7 +153,7 @@ def copy_aside(media: Path, sidecar: Path | None, root: Path, suffix: str) -> No
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("folders", nargs="+", type=Path, help="Takeout folder(s) to process (recursive)")
+    parser.add_argument("folders", nargs="+", type=Path, help="Folder(s) to process (recursive)")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without modifying files")
     parser.add_argument(
         "-o", "--output", type=Path, default=None,
